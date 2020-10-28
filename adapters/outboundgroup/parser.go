@@ -111,8 +111,11 @@ func ParseProxyGroup(config map[string]interface{}, proxyMap map[string]C.Proxy,
 	case "fallback":
 		group = NewFallback(groupName, providers)
 	case "load-balance":
-		strategy := parseStrategy(config)
-		return NewLoadBalance(groupName, providers, strategy)
+		strategyFn, err := parseStrategyFn(config)
+		if err != nil {
+			return nil, err
+		}
+		group = NewLoadBalance(groupName, providers, strategyFn)
 	case "relay":
 		group = NewRelay(groupName, providers)
 	default:

@@ -27,13 +27,20 @@ type LoadBalance struct {
 
 var errStrategy = errors.New("unsupported strategy")
 
-func parseStrategy(config map[string]interface{}) string {
+func parseStrategyFn(config map[string]interface{}) (strategyFn, error) {
 	if elm, ok := config["strategy"]; ok {
 		if strategy, ok := elm.(string); ok {
-			return strategy
+			switch strategy {
+			case "consistent-hashing":
+				return strategyConsistentHashing(), nil
+			case "round-robin":
+				return strategyRoundRobin(), nil
+			default:
+				return nil, fmt.Errorf("%w: %s", errStrategy, strategy)
+			}
 		}
 	}
-	return "consistent-hashing"
+	return strategyConsistentHashing(), nil
 }
 
 func getKey(metadata *C.Metadata) string {
@@ -153,20 +160,11 @@ func (lb *LoadBalance) MarshalJSON() ([]byte, error) {
 	})
 }
 
-func NewLoadBalance(name string, providers []provider.ProxyProvider, strategy string) (lb *LoadBalance, err error) {
-	var strategyFn strategyFn
-	switch strategy {
-	case "consistent-hashing":
-		strategyFn = strategyConsistentHashing()
-	case "round-robin":
-		strategyFn = strategyRoundRobin()
-	default:
-		return nil, fmt.Errorf("%w: %s", errStrategy, strategy)
-	}
+func NewLoadBalance(name string, providers []provider.ProxyProvider, strategyFn strategyFn) *LoadBalance {
 	return &LoadBalance{
 		Base:      	outbound.NewBase(name, "", C.LoadBalance, false),
 		single:    	singledo.NewSingle(defaultGetProxiesDuration),
 		providers: 	providers,
 		strategyFn: strategyFn,
-	}, nil
+	}
 }
