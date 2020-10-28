@@ -164,9 +164,9 @@ func NewLoadBalance(name string, providers []provider.ProxyProvider, strategy st
 		return nil, fmt.Errorf("%w: %s", errStrategy, strategy)
 	}
 	return &LoadBalance{
-		Base:      	outbound.NewBase(name, "", C.LoadBalance, false),
-		single:    	singledo.NewSingle(defaultGetProxiesDuration),
-		providers: 	providers,
+		Base:       outbound.NewBase(name, "", C.LoadBalance, false),
+		single:     singledo.NewSingle(defaultGetProxiesDuration),
+		providers:  providers,
 		strategyFn: strategyFn,
 	}, nil
 }
