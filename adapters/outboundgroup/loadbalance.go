@@ -3,6 +3,8 @@ package outboundgroup
 import (
 	"context"
 	"encoding/json"
+	"errors"
+	"fmt"
 	"net"
 
 	"github.com/Dreamacro/clash/adapters/outbound"
@@ -21,6 +23,20 @@ type LoadBalance struct {
 	single     *singledo.Single
 	providers  []provider.ProxyProvider
 	strategyFn strategyFn
+}
+
+var (
+	errMissStrategy = errors.New("`strategy` missing")
+	errStrategy     = errors.New("unsupported strategy")
+	)
+
+func parseStrategy(config map[string]interface{}) (strategy string, err error) {
+	if elm, ok := config["strategy"]; ok {
+		if strategy, ok := elm.(string); ok {
+			return strategy, nil
+		}
+	}
+	return "", errMissStrategy
 }
 
 func getKey(metadata *C.Metadata) string {
@@ -140,11 +156,20 @@ func (lb *LoadBalance) MarshalJSON() ([]byte, error) {
 	})
 }
 
-func NewLoadBalance(name string, providers []provider.ProxyProvider, strategyFn strategyFn) *LoadBalance {
+func NewLoadBalance(name string, providers []provider.ProxyProvider, strategy string) (lb *LoadBalance, err error) {
+	var strategyFn strategyFn
+	switch strategy {
+	case "consistent-hashing":
+		strategyFn = strategyConsistentHashing()
+	case "round-robin":
+		strategyFn = strategyRoundRobin()
+	default:
+		return nil, fmt.Errorf("%w: %s", errStrategy, strategy)
+	}
 	return &LoadBalance{
 		Base:      	outbound.NewBase(name, "", C.LoadBalance, false),
 		single:    	singledo.NewSingle(defaultGetProxiesDuration),
 		providers: 	providers,
 		strategyFn: strategyFn,
-	}
+	}, nil
 }
