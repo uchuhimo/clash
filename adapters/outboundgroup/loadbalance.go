@@ -25,18 +25,15 @@ type LoadBalance struct {
 	strategyFn strategyFn
 }
 
-var (
-	errMissStrategy = errors.New("`strategy` missing")
-	errStrategy     = errors.New("unsupported strategy")
-	)
+var errStrategy = errors.New("unsupported strategy")
 
-func parseStrategy(config map[string]interface{}) (strategy string, err error) {
+func parseStrategy(config map[string]interface{}) string {
 	if elm, ok := config["strategy"]; ok {
 		if strategy, ok := elm.(string); ok {
-			return strategy, nil
+			return strategy
 		}
 	}
-	return "", errMissStrategy
+	return "consistent-hashing"
 }
 
 func getKey(metadata *C.Metadata) string {
