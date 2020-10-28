@@ -12,6 +12,7 @@ import (
 var (
 	errFormat            = errors.New("format error")
 	errType              = errors.New("unsupport type")
+	errStrategy          = errors.New("unsupport strategy")
 	errMissProxy         = errors.New("`use` or `proxies` missing")
 	errMissHealthCheck   = errors.New("`url` or `interval` missing")
 	errDuplicateProvider = errors.New("`duplicate provider name")
@@ -20,6 +21,7 @@ var (
 type GroupCommonOption struct {
 	Name     string   `group:"name"`
 	Type     string   `group:"type"`
+	Strategy string   `group:"strategy,omitempty"`
 	Proxies  []string `group:"proxies,omitempty"`
 	Use      []string `group:"use,omitempty"`
 	URL      string   `group:"url,omitempty"`
@@ -111,9 +113,14 @@ func ParseProxyGroup(config map[string]interface{}, proxyMap map[string]C.Proxy,
 	case "fallback":
 		group = NewFallback(groupName, providers)
 	case "load-balance":
-		group = NewLoadBalance(groupName, providers)
-	case "round-robin":
-		group = NewRoundRobin(groupName, providers)
+		switch groupOption.Strategy {
+		case "consistent-hashing":
+			group = NewLoadBalance(groupName, providers)
+		case "round-robin":
+			group = NewRoundRobin(groupName, providers)
+		default:
+			return nil, fmt.Errorf("%w: %s", errStrategy, groupOption.Strategy)
+		}
 	case "relay":
 		group = NewRelay(groupName, providers)
 	default:
