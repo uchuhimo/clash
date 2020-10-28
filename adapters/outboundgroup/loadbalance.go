@@ -14,20 +14,13 @@ import (
 	"golang.org/x/net/publicsuffix"
 )
 
+type strategyFn = func(proxies []C.Proxy, metadata *C.Metadata) C.Proxy
+
 type LoadBalance struct {
 	*outbound.Base
-	single    *singledo.Single
-	providers []provider.ProxyProvider
-}
-
-type ConsistentHashing struct {
-	*LoadBalance
-	maxRetry int
-}
-
-type RoundRobin struct {
-	*LoadBalance
-	index int
+	single     *singledo.Single
+	providers  []provider.ProxyProvider
+	strategyFn strategyFn
 }
 
 func getKey(metadata *C.Metadata) string {
@@ -90,6 +83,44 @@ func (lb *LoadBalance) SupportUDP() bool {
 	return true
 }
 
+func strategyRoundRobin() strategyFn {
+	idx := 0
+	return func(proxies []C.Proxy, metadata *C.Metadata) C.Proxy {
+		length := len(proxies)
+		for i := 0; i < length; i++ {
+			idx = (idx + 1) % length
+			proxy := proxies[idx]
+			if proxy.Alive() {
+				return proxy
+			}
+		}
+
+		return proxies[0]
+	}
+}
+
+func strategyConsistentHashing() strategyFn {
+	maxRetry := 5
+	return func(proxies []C.Proxy, metadata *C.Metadata) C.Proxy {
+		key := uint64(murmur3.Sum32([]byte(getKey(metadata))))
+		buckets := int32(len(proxies))
+		for i := 0; i < maxRetry; i, key = i+1, key+1 {
+			idx := jumpHash(key, buckets)
+			proxy := proxies[idx]
+			if proxy.Alive() {
+				return proxy
+			}
+		}
+
+		return proxies[0]
+	}
+}
+
+func (lb *LoadBalance) Unwrap(metadata *C.Metadata) C.Proxy {
+	proxies := lb.proxies()
+	return lb.strategyFn(proxies, metadata)
+}
+
 func (lb *LoadBalance) proxies() []C.Proxy {
 	elm, _, _ := lb.single.Do(func() (interface{}, error) {
 		return getProvidersProxies(lb.providers), nil
@@ -109,52 +140,11 @@ func (lb *LoadBalance) MarshalJSON() ([]byte, error) {
 	})
 }
 
-func (ch *ConsistentHashing) Unwrap(metadata *C.Metadata) C.Proxy {
-	key := uint64(murmur3.Sum32([]byte(getKey(metadata))))
-	proxies := ch.proxies()
-	buckets := int32(len(proxies))
-	for i := 0; i < ch.maxRetry; i, key = i+1, key+1 {
-		idx := jumpHash(key, buckets)
-		proxy := proxies[idx]
-		if proxy.Alive() {
-			return proxy
-		}
-	}
-
-	return proxies[0]
-}
-
-func (rr *RoundRobin) Unwrap(metadata *C.Metadata) C.Proxy {
-	proxies := rr.proxies()
-	for i := 0; i < len(proxies); i++ {
-		rr.index = (rr.index + 1) % len(proxies)
-		proxy := proxies[rr.index]
-		if proxy.Alive() {
-			return proxy
-		}
-	}
-
-	return proxies[0]
-}
-
-func NewConsistentHashing(name string, providers []provider.ProxyProvider) *ConsistentHashing {
-	return &ConsistentHashing{
-		LoadBalance: &LoadBalance{
-			Base:      outbound.NewBase(name, "", C.LoadBalance, false),
-			single:    singledo.NewSingle(defaultGetProxiesDuration),
-			providers: providers,
-		},
-		maxRetry:    3,
-	}
-}
-
-func NewRoundRobin(name string, providers []provider.ProxyProvider) *RoundRobin {
-	return &RoundRobin{
-		LoadBalance: &LoadBalance{
-			Base:      outbound.NewBase(name, "", C.LoadBalance, false),
-			single:    singledo.NewSingle(defaultGetProxiesDuration),
-			providers: providers,
-		},
-		index:       0,
+func NewLoadBalance(name string, providers []provider.ProxyProvider, strategyFn strategyFn) *LoadBalance {
+	return &LoadBalance{
+		Base:      	outbound.NewBase(name, "", C.LoadBalance, false),
+		single:    	singledo.NewSingle(defaultGetProxiesDuration),
+		providers: 	providers,
+		strategyFn: strategyFn,
 	}
 }

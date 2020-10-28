@@ -115,9 +115,9 @@ func ParseProxyGroup(config map[string]interface{}, proxyMap map[string]C.Proxy,
 	case "load-balance":
 		switch groupOption.Strategy {
 		case "consistent-hashing":
-			group = NewConsistentHashing(groupName, providers)
+			group = NewLoadBalance(groupName, providers, strategyConsistentHashing())
 		case "round-robin":
-			group = NewRoundRobin(groupName, providers)
+			group = NewLoadBalance(groupName, providers, strategyRoundRobin())
 		default:
 			return nil, fmt.Errorf("%w: %s", errStrategy, groupOption.Strategy)
 		}
